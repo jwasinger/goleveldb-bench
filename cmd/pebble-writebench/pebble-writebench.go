@@ -142,12 +142,7 @@ func genTests() map[string]Benchmarker {
 	var tests = map[string]Benchmarker{}
 	tests["nobatch"] = seqWrite{Options: makeDefaultOptions()}
 
-	/*
-	TODO write options is set when calling db.Set
-	nobatch_nosync := seqWrite{Options: makeDefaultOptions()}
-	nobatch_nosync.Options.WriteOptions.Sync = false
-	tests["nobatch-nosync"] = nobatch_nosync
-	*/
+	tests["nobatch-nosync"] = seqWrite{Options: makeDefaultOptions(), NoSyncOnWrite: true}
 
 	tests["batch-100kb"] = batchWrite{Options: makeDefaultOptions(), BatchSize: 100 * ldbopt.KiB}
 	tests["batch-1mb"] = batchWrite{Options: makeDefaultOptions(), BatchSize: ldbopt.MiB}
@@ -158,37 +153,28 @@ func genTests() map[string]Benchmarker {
 	batch_100kb_wb_512mb_cach_1gb.Options.MemTableSize = 512 * ldbopt.MiB
 	tests["batch-100kb-wb-512mb-cache-1gb"] = batch_100kb_wb_512mb_cach_1gb
 
-	/*
-	TODO write options is set when calling db.Set
-	batch_100kb_nosync := batchWrite{BatchSize: 100 * 1024, Options: makeDefaultOptions()}
-	batch_100kb_nosync.Options.WriteOptions.Sync = false
-	tests["batch-100kb-nosync"] = batch_100kb_nosync
-	*/
+	tests["batch-100kb-nosync"] = batchWrite{BatchSize: 100 * 1024, Options: makeDefaultOptions(), NoSyncOnWrite: true}
 
-	/*
-	TODO write options is set when calling db.Set
-	batch_100kb_wb_512mb_cache_1gb_nosync := batchWrite{BatchSize: 100 * 1024, Options: makeDefaultOptions()}
-	batch_100kb_wb_512mb_cache_1gb_nosync.Options.WriteOptions.Sync = false
+	batch_100kb_wb_512mb_cache_1gb_nosync := batchWrite{BatchSize: 100 * 1024, Options: makeDefaultOptions(), NoSyncOnWrite: true}
 	batch_100kb_wb_512mb_cache_1gb_nosync.Options.Cache = pebble.NewCache(1024 * ldbopt.MiB)
-	batch_100kb_wb_512mb_cache_1gb_nosync.Options.MemtableSize = 512 * ldbopt.MiB
+	batch_100kb_wb_512mb_cache_1gb_nosync.Options.MemTableSize = 512 * ldbopt.MiB
 	tests["batch-100kb-wb-512mb-cache-1gb-nosync"] = batch_100kb_wb_512mb_cache_1gb_nosync
-	*/
 
-	/*  TODO
-	tests["batch-100kb-ctable-64mb"] = batchWrite{BatchSize: 100 * 1024, Options: makeDefaultOptions()}
-	tests["batch-100kb-ctable-64mb"].Options.Levels = makeLevels(64 * 1024 * 1024, 1)
+	batch_100kb_ctable_64mb := batchWrite{BatchSize: 100 * 1024, Options: makeDefaultOptions()}
+	batch_100kb_ctable_64mb.Options.Levels = makeLevels(64 * 1024 * 1024, 1)
+	tests["batch-100kb-ctable-64mb"] = batch_100kb_ctable_64mb
 
-	tests["batch-100kb-ctable-64mb-nosync"] = batchWrite{BatchSize: 100 * 1024, Options: makeDefaultOptions()}
-	tests["batch-100kb-ctable-64mb-nosync"].Options.Levels = makeLevels(64 * 1024 * 1024, 1)
-	tests["batch-100kb-ctable-64mb-nosync"].Options.WriteOptions.Sync = false
+	batch_100kb_ctable_64mb_nosync := batchWrite{BatchSize: 100 * 1024, Options: makeDefaultOptions(), NoSyncOnWrite: true}
+	batch_100kb_ctable_64mb_nosync.Options.Levels = makeLevels(64 * 1024 * 1024, 1)
+	tests["batch-1ookb-ctable-64mb-nosync"] = batch_100kb_ctable_64mb_nosync
 
-	tests["batch-100kb-ctable-64mb-wb-512mb-cache-1gb"] = batchWrite{BatchSize: 100 * 1024, Options: makeDefaultOptions()}
-	tests["batch-100kb-ctable-64mb-wb-512mb-cache-1gb"].Options.Cache = pebble.NewCache(1024 * ldbopt.MiB)
-	tests["batch-100kb-ctable-64mb-wb-512mb-cache-1gb"].Options.Levels = makeLevels(64 * 1024 * 1024, 1)
-	tests["batch-100kb-ctable-64mb-wb-512mb-cache-1gb"].Options.MemtableSize = 512 * ldbopt.MiB
+	batch_100kb_ctable_64mb_wb_512mb_cache_1gb := batchWrite{BatchSize: 100 * 1024, Options: makeDefaultOptions()}
+	batch_100kb_ctable_64mb_wb_512mb_cache_1gb.Options.Cache = pebble.NewCache(1024 * ldbopt.MiB)
+	batch_100kb_ctable_64mb_wb_512mb_cache_1gb.Options.Levels = makeLevels(64 * 1024 * 1024, 1)
+	batch_100kb_ctable_64mb_wb_512mb_cache_1gb.Options.MemTableSize = 512 * ldbopt.MiB
+	tests["batch-100kb-ctable-64mb-wb-512mb-cache-1gb"] = batch_100kb_ctable_64mb_wb_512mb_cache_1gb
 
 	tests["concurrent"] = concurrentWrite{N: 8}
-	TODO end */
 
 	// TODO does pebble implement write batch merging (does it allow it to be disabled?)
 	// TODO what is a use-case of NoWriteMerge in ldb? Unique sequence number per non-batch write?
@@ -207,6 +193,7 @@ func testnames(tests map[string]Benchmarker) (n []string) {
 
 type seqWrite struct {
 	Options pebble.Options
+	NoSyncOnWrite bool
 }
 
 func (b seqWrite) Benchmark(dir string, env *bench.WriteEnv) error {
@@ -215,8 +202,10 @@ func (b seqWrite) Benchmark(dir string, env *bench.WriteEnv) error {
 		return err
 	}
 	defer db.Close()
+	wo := pebble.WriteOptions{Sync: !b.NoSyncOnWrite}
+
 	return env.Run(func(key, value string, lastCall bool) error {
-		if err := db.Set([]byte(key), []byte(value), nil); err != nil {
+		if err := db.Set([]byte(key), []byte(value), &wo); err != nil {
 			return err
 		}
 		env.Progress(len(value))
@@ -227,6 +216,7 @@ func (b seqWrite) Benchmark(dir string, env *bench.WriteEnv) error {
 type batchWrite struct {
 	Options   pebble.Options
 	BatchSize int
+	NoSyncOnWrite bool
 }
 
 func (b batchWrite) Benchmark(dir string, env *bench.WriteEnv) error {
@@ -238,11 +228,12 @@ func (b batchWrite) Benchmark(dir string, env *bench.WriteEnv) error {
 
 	batch := db.NewBatch()
 	bsize := 0
+	wo := pebble.WriteOptions{Sync: !b.NoSyncOnWrite}
 	return env.Run(func(key, value string, lastCall bool) error {
 		batch.Set([]byte(key), []byte(value), nil)
 		bsize += len(value)
 		if bsize >= b.BatchSize || lastCall {
-			if err := batch.Apply(batch, nil); err != nil {
+			if err := batch.Apply(batch, &wo); err != nil {
 				return err
 			}
 			env.Progress(bsize)
