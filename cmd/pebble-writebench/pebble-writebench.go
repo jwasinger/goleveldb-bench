@@ -120,6 +120,18 @@ func defaultPebbleOptions() *pebble.Options {
         }
 }
 
+func makeLevels(size int64, count int)  []LevelOptions {
+	result = []LevelOptions{}
+
+	for i := 0; i < count; i++ {
+		l := LevelOptions{}
+		l = l.EnsureDefaults()
+		l.TargetFileSize = size
+		result = append(result, LevelOptions{TargetFileSize: size})
+	}
+	return result
+}
+
 func genTests() map[string]Benchmarker {
 	var tests = map[string]Benchmarker{}
 	tests["nobatch"] = seqWrite{}
@@ -144,73 +156,27 @@ func genTests() map[string]Benchmarker {
 	tests["batch-100kb-wb-512mb-cache-1gb-nosync"].Options.MemtableSize = 512 * ldbopt.MiB
 
 	tests["batch-100kb-ctable-64mb"] = batchWrite{BatchSize: 100 * 1024, Options: makeDefaultOptions()}
-	tests["batch-100kb-ctable-64mb"] = 
+	tests["batch-100kb-ctable-64mb"].Options.Levels = makeLevels(64 * 1024 * 1024, 1)
+
+	tests["batch-100kb-ctable-64mb-nosync"] = batchWrite{BatchSize: 100 * 1024, Options: makeDefaultOptions()}
+	tests["batch-100kb-ctable-64mb-nosync"].Options.Levels = makeLevels(64 * 1024 * 1024, 1)
+	tests["batch-100kb-ctable-64mb-nosync"].Options.WriteOptions.Sync = false
+
+	tests["batch-100kb-ctable-64mb-wb-512mb-cache-1gb"] = batchWrite{BatchSize: 100 * 1024, Options: makeDefaultOptions()}
+	tests["batch-100kb-ctable-64mb-wb-512mb-cache-1gb"].Options.Cache = pebble.NewCache(1024 * ldbopt.MiB)
+	tests["batch-100kb-ctable-64mb-wb-512mb-cache-1gb"].Options.Levels = makeLevels(64 * 1024 * 1024, 1)
+	tests["batch-100kb-ctable-64mb-wb-512mb-cache-1gb"].Options.MemtableSize = 512 * ldbopt.MiB
+
+	tests["concurrent"] = concurrentWrite{N: 8}
+
+	// TODO does pebble implement write batch merging (does it allow it to be disabled?)
+	// TODO what is a use-case of NoWriteMerge in ldb? Unique sequence number per non-batch write?
+	// tests["concurrent-nomerge"] = concurrentWRite{N: 8, NoWriteMerge: true}
+
+	return tests
 }
 
-var tests = map[string]Benchmarker{
-	"nobatch":        seqWrite{},
-	// NoSync (ldb) -> WriteOptions.Sync (pebble) (TODO verify this)
-	"nobatch-nosync": seqWrite{Options: opt.Options{NoSync: true}},
-	"batch-100kb":    batchWrite{BatchSize: 100 * opt.KiB},
-	"batch-1mb":      batchWrite{BatchSize: opt.MiB},
-	"batch-5mb":      batchWrite{BatchSize: 5 * opt.MiB},
-	"batch-100kb-wb-512mb-cache-1gb": batchWrite{
-		BatchSize: 100 * 1024,
-		Options: opt.Options{
-			// These settings approximate what geth is doing.
-			// Cache: pebble.NewCache(size in bytes)
-			BlockCacheCapacity: 1024 * opt.MiB,
-			// Options.MemtableSize
-			WriteBuffer:        512 * opt.MiB,
-		},
-	},
-	"batch-100kb-nosync": batchWrite{
-		BatchSize: 100 * 1024,
-		Options:   opt.Options{NoSync: true},
-	},
-	"batch-100kb-wb-512mb-cache-1gb-nosync": batchWrite{
-		BatchSize: 100 * 1024,
-		Options: opt.Options{
-			NoSync:             true,
-			BlockCacheCapacity: 1024 * opt.MiB,
-			WriteBuffer:        512 * opt.MiB,
-		},
-	},
-	"batch-100kb-ctable-64mb": batchWrite{
-		BatchSize: 100 * 1024,
-		// CompactionTableSize (ldb) -> 
-		Options:   opt.Options{CompactionTableSize: 64 * opt.MiB},
-	},
-	"batch-100kb-ctable-64mb-nosync": batchWrite{
-		BatchSize: 100 * 1024,
-		Options:   opt.Options{NoSync: true, CompactionTableSize: 64 * opt.MiB},
-	},
-	"batch-100kb-ctable-64mb-wb-512mb-cache-1gb": batchWrite{
-		BatchSize: 100 * 1024,
-		Options: opt.Options{
-			BlockCacheCapacity:  1024 * opt.MiB,
-			WriteBuffer:         512 * opt.MiB,
-			CompactionTableSize: 64 * opt.MiB,
-		},
-	},
-	"batch-100kb-notx": batchWrite{
-		BatchSize: 1024 * 1024,
-		// Pebble doesn't support transactions
-		Options:   opt.Options{DisableLargeBatchTransaction: true},
-	},
-	"batch-1mb-notx": batchWrite{
-		BatchSize: 1024 * 1024,
-		Options:   opt.Options{DisableLargeBatchTransaction: true},
-	},
-	"batch-5mb-notx": batchWrite{
-		BatchSize: 5 * 1024 * 1024,
-		Options:   opt.Options{DisableLargeBatchTransaction: true},
-	},
-	"concurrent":         concurrentWrite{N: 8},
-	"concurrent-nomerge": concurrentWrite{N: 8, NoWriteMerge: true},
-}
-
-func testnames() (n []string) {
+func testnames() (tests map[string]Benchmarker, n []string) {
 	for name := range tests {
 		n = append(n, name)
 	}
@@ -219,7 +185,7 @@ func testnames() (n []string) {
 }
 
 type seqWrite struct {
-	Options opt.Options
+	Options pebble.Options
 }
 
 func (b seqWrite) Benchmark(dir string, env *bench.WriteEnv) error {
@@ -238,18 +204,18 @@ func (b seqWrite) Benchmark(dir string, env *bench.WriteEnv) error {
 }
 
 type batchWrite struct {
-	Options   opt.Options
+	Options   pebble.Options
 	BatchSize int
 }
 
 func (b batchWrite) Benchmark(dir string, env *bench.WriteEnv) error {
-	db, err := leveldb.OpenFile(dir, &b.Options)
+	db, err := pebble.Open(dir, &b.Options)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 
-	batch := new(leveldb.Batch)
+	batch := db.NewBatch()
 	bsize := 0
 	return env.Run(func(key, value string, lastCall bool) error {
 		batch.Put([]byte(key), []byte(value))
@@ -269,13 +235,13 @@ func (b batchWrite) Benchmark(dir string, env *bench.WriteEnv) error {
 type kv struct{ k, v string }
 
 type concurrentWrite struct {
-	Options      opt.Options
+	Options      pebble.Options
 	N            int
 	NoWriteMerge bool
 }
 
 func (b concurrentWrite) Benchmark(dir string, env *bench.WriteEnv) error {
-	db, err := leveldb.OpenFile(dir, &b.Options)
+	db, err := pebble.OpenFile(dir, &b.Options)
 	if err != nil {
 		return err
 	}
@@ -283,7 +249,6 @@ func (b concurrentWrite) Benchmark(dir string, env *bench.WriteEnv) error {
 
 	var (
 		write            = make(chan kv, b.N)
-		wopt             = &opt.WriteOptions{NoWriteMerge: b.NoWriteMerge}
 		outerCtx, cancel = context.WithCancel(context.Background())
 		eg, ctx          = errgroup.WithContext(outerCtx)
 	)
@@ -292,7 +257,7 @@ func (b concurrentWrite) Benchmark(dir string, env *bench.WriteEnv) error {
 			for {
 				select {
 				case kv := <-write:
-					if err := db.Put([]byte(kv.k), []byte(kv.v), wopt); err != nil {
+					if err := db.Put([]byte(kv.k), []byte(kv.v), nil); err != nil {
 						return err
 					}
 					env.Progress(len(kv.v))
