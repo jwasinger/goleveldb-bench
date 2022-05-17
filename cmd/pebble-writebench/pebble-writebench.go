@@ -174,6 +174,11 @@ func genTests() map[string]Benchmarker {
 	batch_100kb_ctable_64mb_wb_512mb_cache_1gb.Options.MemTableSize = 512 * ldbopt.MiB
 	tests["batch-100kb-ctable-64mb-wb-512mb-cache-1gb"] = batch_100kb_ctable_64mb_wb_512mb_cache_1gb
 
+	// pebble doesn't support transactions. these aren't different than batch-XXX above. remove these?
+	tests["batch-100kb-notx"] = batchWrite{Options: makeDefaultOptions(), BatchSize: 100 * ldbopt.KiB}
+	tests["batch-1mb-notx"] = batchWrite{Options: makeDefaultOptions(), BatchSize: ldbopt.MiB}
+	tests["batch-5mb-notx"] = batchWrite{Options: makeDefaultOptions(), BatchSize: 5 * ldbopt.MiB}
+
 	tests["concurrent"] = concurrentWrite{N: 8}
 
 	// TODO does pebble implement write batch merging (does it allow it to be disabled?)
@@ -182,6 +187,7 @@ func genTests() map[string]Benchmarker {
 
 	// for now just put incorrect test
 	tests["concurrent-nomerge"] = concurrentWrite{N: 8}
+
 
 	return tests
 }
