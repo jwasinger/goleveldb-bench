@@ -179,14 +179,14 @@ func genTests() map[string]Benchmarker {
 	tests["batch-1mb-notx"] = batchWrite{Options: makeDefaultOptions(), BatchSize: ldbopt.MiB}
 	tests["batch-5mb-notx"] = batchWrite{Options: makeDefaultOptions(), BatchSize: 5 * ldbopt.MiB}
 
-	tests["concurrent"] = concurrentWrite{N: 8}
+	tests["concurrent"] = concurrentWrite{N: 8, Options: makeDefaultOptions()}
 
 	// TODO does pebble implement write batch merging (does it allow it to be disabled?)
 	// TODO what is a use-case of NoWriteMerge in ldb? Unique sequence number per non-batch write?
 	// tests["concurrent-nomerge"] = concurrentWrite{N: 8, NoWriteMerge: true}
 
 	// for now just put incorrect test
-	tests["concurrent-nomerge"] = concurrentWrite{N: 8}
+	tests["concurrent-nomerge"] = concurrentWrite{N: 8, Options: makeDefaultOptions()}
 
 
 	return tests
