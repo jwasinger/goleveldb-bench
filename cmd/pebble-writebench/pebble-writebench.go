@@ -166,7 +166,7 @@ func genTests() map[string]Benchmarker {
 
 	batch_100kb_ctable_64mb_nosync := batchWrite{BatchSize: 100 * 1024, Options: makeDefaultOptions(), NoSyncOnWrite: true}
 	batch_100kb_ctable_64mb_nosync.Options.Levels = makeLevels(64 * 1024 * 1024, 1)
-	tests["batch-1ookb-ctable-64mb-nosync"] = batch_100kb_ctable_64mb_nosync
+	tests["batch-100kb-ctable-64mb-nosync"] = batch_100kb_ctable_64mb_nosync
 
 	batch_100kb_ctable_64mb_wb_512mb_cache_1gb := batchWrite{BatchSize: 100 * 1024, Options: makeDefaultOptions()}
 	batch_100kb_ctable_64mb_wb_512mb_cache_1gb.Options.Cache = pebble.NewCache(1024 * ldbopt.MiB)
