@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	bench "github.com/fjl/goleveldb-bench"
 	ldbopt "github.com/syndtr/goleveldb/leveldb/opt"
@@ -91,7 +90,7 @@ func main() {
 
 func runTest(logdir, dbdir, name string, createdb bool, cfg bench.ReadConfig) error {
 	cfg.TestName = name
-	logfile, err := os.Create(filepath.Join(logdir, name+time.Now().Format(".2006-01-02-15:04:05")+".json"))
+	logfile, err := os.Create(filepath.Join(logdir, name+".json"))
 	if err != nil {
 		return err
 	}
@@ -169,8 +168,8 @@ func makeDefaultOptions(blockCacheSize int64, filterPolicy bloom.FilterPolicy) p
 }
 
 var tests = map[string]Benchmarker{
-	"random-read": randomRead{Options: makeDefaultOptions(8 * ldbopt.MiB, bloom.FilterPolicy(10))},
-	"random-read-filter": randomRead{Options: makeDefaultOptions(8 * ldbopt.MiB, bloom.FilterPolicy(0))}, // TODO check that FilterPolicy(0) is correct
+	"random-read": randomRead{Options: makeDefaultOptions(8 * ldbopt.MiB, bloom.FilterPolicy(0))},
+	"random-read-filter": randomRead{Options: makeDefaultOptions(8 * ldbopt.MiB, bloom.FilterPolicy(10))}, // TODO check that FilterPolicy(0) is correct
 	"random-read-bigcache": randomRead{Options: makeDefaultOptions(100 * ldbopt.MiB, bloom.FilterPolicy(0))},
 	"random-read-bigcache-filter": randomRead{Options: makeDefaultOptions(100 * ldbopt.MiB, bloom.FilterPolicy(10))},
 }

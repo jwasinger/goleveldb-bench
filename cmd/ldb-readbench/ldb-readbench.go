@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	bench "github.com/fjl/goleveldb-bench"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -91,7 +90,7 @@ func main() {
 
 func runTest(logdir, dbdir, name string, createdb bool, cfg bench.ReadConfig) error {
 	cfg.TestName = name
-	logfile, err := os.Create(filepath.Join(logdir, name+time.Now().Format(".2006-01-02-15:04:05")+".json"))
+	logfile, err := os.Create(filepath.Join(logdir, name+".json"))
 	if err != nil {
 		return err
 	}
