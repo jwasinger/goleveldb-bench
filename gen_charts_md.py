@@ -10,7 +10,7 @@ def order_benchmarks(benchmark_files: [str]) -> [str]:
     return final_result
 
 i = 0
-print("## write benchmarks")
+print("### write benchmarks")
 for fname in order_benchmarks(glob.glob("write-charts/*")):
     print("#![](https://github.com/jwasinger/goleveldb-bench/raw/pebble/write-charts/{})".format(fname.split("/")[-1].strip('\n')))
     if i % 2 != 0:
@@ -20,7 +20,7 @@ for fname in order_benchmarks(glob.glob("write-charts/*")):
     i += 1
 
 i = 0
-print("## read benchmarks")
+print("### read benchmarks")
 for fname in order_benchmarks(glob.glob("read-charts/*")):
     print("#![](https://github.com/jwasinger/goleveldb-bench/raw/pebble/read-charts/{})".format(fname.split("/")[-1].strip('\n')))
     if i % 2 != 0:
