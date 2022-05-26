@@ -18,6 +18,6 @@
 ./run_bench.sh batch-1mb-notx
 ./run_bench.sh batch-5mb-notx
 
-# ./run_bench.sh concurrent
-# ./run_bench.sh concurrent-nomerge
+./run_bench.sh concurrent
+./run_bench.sh concurrent-nomerge
 # ^ TODO these don't work for pebble

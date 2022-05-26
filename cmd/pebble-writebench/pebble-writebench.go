@@ -90,6 +90,9 @@ type Benchmarker interface {
 	Benchmark(dir string, env *bench.WriteEnv) error
 }
 
+const ldbDefaultCacheSize = 8 * 1024 * 1024
+const ldbDefaultMemTableSize = 4 * 1024 * 1024
+
 func makeDefaultOptions() pebble.Options {
 	defaultOptions := pebble.Options{
                 // Pebble has a single combined cache area and the write
@@ -97,16 +100,15 @@ func makeDefaultOptions() pebble.Options {
                 // memory allowance for cache.
 		// TODO check ldb default Cache Size
 		// 2mb cache size by default
-                Cache:        pebble.NewCache(int64(2 * 1024 * 1024)),
-		// TODO check equivalent default setting in ldb for this
-		// TODO why tf is this 0 by default in Geth???
-                MaxOpenFiles: 0,
+                Cache:        pebble.NewCache(int64(ldbDefaultCacheSize)),
+		// same as ldb default max handles
+                MaxOpenFiles: 1000,
                 // The size of memory table(as well as the write buffer).
                 // Note, there may have more than two memory tables in the system.
                 // MemTableStopWritesThreshold can be configured to avoid the memory abuse.
 		// TODO check ldb default MemTableSize
 		// TODO check this value is proper
-                MemTableSize: 2 * 1024 * 1024 / 4,
+                MemTableSize: ldbDefaultMemTableSize,
                 // The default compaction concurrency(1 thread),
                 // Here use all available CPUs for faster compaction.
                 MaxConcurrentCompactions: 1, // TODO set to 1 for compatibility with ldb.  up this?
@@ -179,15 +181,16 @@ func genTests() map[string]Benchmarker {
 	tests["batch-1mb-notx"] = batchWrite{Options: makeDefaultOptions(), BatchSize: ldbopt.MiB}
 	tests["batch-5mb-notx"] = batchWrite{Options: makeDefaultOptions(), BatchSize: 5 * ldbopt.MiB}
 
-	tests["concurrent"] = concurrentWrite{N: 8, Options: makeDefaultOptions()}
+	concurrentOptions := concurrentWrite{N: 8, Options: makeDefaultOptions(), NoSyncOnWrite: true}
+
+	tests["concurrent"] = concurrentOptions //concurrentWrite{N: 8, Options: makeDefaultOptions()}
 
 	// TODO does pebble implement write batch merging (does it allow it to be disabled?)
 	// TODO what is a use-case of NoWriteMerge in ldb? Unique sequence number per non-batch write?
 	// tests["concurrent-nomerge"] = concurrentWrite{N: 8, NoWriteMerge: true}
 
 	// for now just put incorrect test
-	tests["concurrent-nomerge"] = concurrentWrite{N: 8, Options: makeDefaultOptions()}
-
+	tests["concurrent-nomerge"] = concurrentOptions //concurrentWrite{N: 8, Options: makeDefaultOptions()}
 
 	return tests
 }
@@ -259,6 +262,7 @@ type concurrentWrite struct {
 	Options      pebble.Options
 	N            int
 	NoWriteMerge bool
+	NoSyncOnWrite bool
 }
 
 func (b concurrentWrite) Benchmark(dir string, env *bench.WriteEnv) error {
@@ -272,13 +276,14 @@ func (b concurrentWrite) Benchmark(dir string, env *bench.WriteEnv) error {
 		write            = make(chan kv, b.N)
 		outerCtx, cancel = context.WithCancel(context.Background())
 		eg, ctx          = errgroup.WithContext(outerCtx)
+		writeOpts = pebble.WriteOptions{Sync: !b.NoSyncOnWrite}
 	)
 	for i := 0; i < b.N; i++ {
 		eg.Go(func() error {
 			for {
 				select {
 				case kv := <-write:
-					if err := db.Set([]byte(kv.k), []byte(kv.v), nil); err != nil {
+					if err := db.Set([]byte(kv.k), []byte(kv.v), &writeOpts); err != nil {
 						return err
 					}
 					env.Progress(len(kv.v))
