@@ -130,30 +130,25 @@ type Benchmarker interface {
 	Benchmark(dir string, env *bench.ReadEnv) error
 }
 
+const ldbDefaultCacheSize = 8 * 1024 * 1024
+const ldbDefaultMemTableSize = 4 * 1024 * 1024
+
 func makeDefaultOptions(blockCacheSize int64, filterPolicy bloom.FilterPolicy) pebble.Options {
         defaultOptions := pebble.Options{
                 // Pebble has a single combined cache area and the write
                 // buffers are taken from this too. Assign all available
                 // memory allowance for cache.
-                // TODO check ldb default Cache Size
-		// TODO verify this is the same as ldb.Options.BlockCacheCapacity
-                // 2mb cache size by default
                 Cache:        pebble.NewCache(blockCacheSize),
-                // TODO check equivalent default setting in ldb for this
-                // TODO why tf is this 0 by default in Geth???
-                MaxOpenFiles: 0,
+                MaxOpenFiles: 1000,
                 // The size of memory table(as well as the write buffer).
                 // Note, there may have more than two memory tables in the system.
                 // MemTableStopWritesThreshold can be configured to avoid the memory abuse.
-                // TODO check ldb default MemTableSize
-                // TODO check this value is proper
-                MemTableSize: 2 * 1024 * 1024 / 4,
+                MemTableSize: ldbDefaultMemTableSize,
                 // The default compaction concurrency(1 thread),
-                // Here use all available CPUs for faster compaction.
-                MaxConcurrentCompactions: 1, // TODO set to 1 for compatibility with ldb.  up this?
+		// use 1 for a fair comparison with ldb
+                MaxConcurrentCompactions: 1,
                 // Per-level options. Options for at least one level must be specified. The
                 // options for the last level are used for all subsequent levels.
-                // TODO each level TargetFileSize should be 10x larger than the parent
                 Levels: []pebble.LevelOptions{
                         {TargetFileSize: 2 * 1024 * 1024, FilterPolicy: filterPolicy},
                         {TargetFileSize: 2 * 1024 * 1024, FilterPolicy: filterPolicy},
@@ -167,9 +162,10 @@ func makeDefaultOptions(blockCacheSize int64, filterPolicy bloom.FilterPolicy) p
         return defaultOptions
 }
 
+
 var tests = map[string]Benchmarker{
-	"random-read": randomRead{Options: makeDefaultOptions(8 * ldbopt.MiB, bloom.FilterPolicy(0))},
-	"random-read-filter": randomRead{Options: makeDefaultOptions(8 * ldbopt.MiB, bloom.FilterPolicy(10))}, // TODO check that FilterPolicy(0) is correct
+	"random-read": randomRead{Options: makeDefaultOptions(ldbDefaultCacheSize, bloom.FilterPolicy(0))},
+	"random-read-filter": randomRead{Options: makeDefaultOptions(ldbDefaultCacheSize, bloom.FilterPolicy(10))},
 	"random-read-bigcache": randomRead{Options: makeDefaultOptions(100 * ldbopt.MiB, bloom.FilterPolicy(0))},
 	"random-read-bigcache-filter": randomRead{Options: makeDefaultOptions(100 * ldbopt.MiB, bloom.FilterPolicy(10))},
 }
@@ -192,10 +188,12 @@ func (b randomRead) Benchmark(dir string, env *bench.ReadEnv) error {
 		return err
 	}
 	defer db.Close()
+
 	return env.Run(func(key, value string, lastCall bool) error {
-		if err := db.Set([]byte(key), []byte(value), nil); err != nil {
+		if err := db.Set([]byte(key), []byte(value), &pebble.WriteOptions{Sync: false}); err != nil {
 			return err
 		}
+
 		return nil
 	}, func(key string) error {
 		if value, closer, err := db.Get([]byte(key)); err != nil {
