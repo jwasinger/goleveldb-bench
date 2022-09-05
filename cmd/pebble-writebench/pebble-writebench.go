@@ -111,7 +111,7 @@ func makeDefaultOptions() pebble.Options {
                 MemTableSize: ldbDefaultMemTableSize,
                 // The default compaction concurrency(1 thread),
                 // Here use all available CPUs for faster compaction.
-                MaxConcurrentCompactions: 1, // TODO set to 1 for compatibility with ldb.  up this?
+                MaxConcurrentCompactions: func() int { return 1 }, // TODO set to 1 for compatibility with ldb.  up this?
                 // Per-level options. Options for at least one level must be specified. The
                 // options for the last level are used for all subsequent levels.
 		// TODO each level TargetFileSize should be 10x larger than the parent

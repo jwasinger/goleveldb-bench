@@ -146,7 +146,7 @@ func makeDefaultOptions(blockCacheSize int64, filterPolicy bloom.FilterPolicy) p
                 MemTableSize: ldbDefaultMemTableSize,
                 // The default compaction concurrency(1 thread),
 		// use 1 for a fair comparison with ldb
-                MaxConcurrentCompactions: 1,
+                MaxConcurrentCompactions: func() int { return 1},
                 // Per-level options. Options for at least one level must be specified. The
                 // options for the last level are used for all subsequent levels.
                 Levels: []pebble.LevelOptions{
